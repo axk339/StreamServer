@@ -1,5 +1,5 @@
 # StreamServer
-RTSP/jpg + high res snapshot mediamtx script \
+RTSP/jpg + high res snapshot script for mediamtx \
 _This script provides a RTSP stream including a jpg still and a high resolution jpg snapshot on an integrated web server. The script can be launched directly within mediamtx, and published its RTSP stream via mediamtx._
 
 
