@@ -3,7 +3,7 @@ RTSP/jpg + high res snapshot script for mediamtx \
 _This script provides a RTSP stream including a jpg still and a high resolution jpg snapshot on an integrated web server. The script can be launched directly within mediamtx, and published its RTSP stream via mediamtx._
 
 
-# Prepare StreamServer script
+# Prepare script
 
 __Dependencies__
 ~~~
@@ -17,8 +17,8 @@ sudo nano /usr/lib/python3/dist-packages/picamera2/outputs/ffmpegoutput.py
 ~~~
 
 ~~~
-                         # '-f', 'pulse',
-                           '-f', 'alsa,
+# '-f', 'pulse',
+  '-f', 'alsa,
 ~~~
 
 
