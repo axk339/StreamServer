@@ -1,13 +1,28 @@
 # StreamServer
 RTSP/jpg + high res snapshot mediamtx script
 
+__Dependencies__
+~~~
+sudo apt-get install python3-picamera2 python3-opencv ffmpeg python3-systemd
+~~~
+
+__Fix ALSA Support__ \
+_By default, picamera2 only supports Pulse audio devices. For supporting ALSA audio devices, a fix in __ffmpegoutput.py__ is needed. This *fix needs to be re-applied after every apt-get upgrade!*_
+~~~
+sudo nano /usr/lib/python3/dist-packages/picamera2/outputs/ffmpegoutput.py
+~~~
+
+~~~
+                         # '-f', 'pulse',
+                           '-f', 'alsa,
+~~~
 
 # Install mediamtx
 
-__Info__
+__Info__ \
 https://github.com/bluenviron/mediamtx?tab=readme-ov-file#raspberry-pi-cameras
 
-__Download__
+__Download__ \
 https://github.com/bluenviron/mediamtx/releases \
 *Tested:* mediamtx_v1.9.3_linux_arm64v8.tar.gz
 
@@ -31,14 +46,48 @@ sudo nano /usr/local/etc/mediamtx.yml
 > hls: no \
 > webrtc: no \
 > srt: no \
-> \
-> paths: \
->   cam_with_audio: \
->   stream: \
->     source: publisher \
->     runOnInit: python /home/pi/StreamServer/streamserver.py \
->     runOnInitRestart: yes \
+
+~~~
+paths:
+ cam_with_audio:
+  stream:
+    source: publisher
+    runOnInit: python /home/pi/StreamServer/streamserver.py
+    runOnInitRestart: yes
+~~~
 
 _Test_
+~~~
 sudo mediamtx
+~~~
 > rtsp://192.168.130.191:8554/stream
+
+__Setup Service__
+~~~
+sudo nano /etc/systemd/system/mediamtx.service
+~~~
+_mediamtx.service_
+~~~
+[Unit]
+Wants=network.target
+[Service]
+ExecStart=/usr/local/bin/mediamtx /usr/local/etc/mediamtx.yml
+Restart=on-failure
+Restart=always
+RestartSec=50s
+[Install]
+WantedBy=multi-user.target
+~~~
+
+~~~
+sudo systemctl daemon-reload
+sudo systemctl enable mediamtx
+sudo systemctl start mediamtx
+sudo systemctl status mediamtx
+~~~
+
+_Check:_
+~~~
+sudo netstat -tulpn
+~~~
+  
