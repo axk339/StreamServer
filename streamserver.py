@@ -38,10 +38,12 @@ import os.path
 import math
 
 #https://picamera.readthedocs.io/en/release-1.13/fov.html
-resx       = 1640
-resy       = 922
-lowx      = 1280
-lowy      = 720
+#resx = 1640
+#resy = 922
+resx = 2304
+resy = 1296
+lowx = 1280
+lowy = 720
 
 logger = "/run/logger"
 stream = "/run/streamserver"
@@ -86,10 +88,13 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
             self.send_header('Cache-Control', 'no-cache, private')
             self.send_header('Pragma', 'no-cache')
             try:
-                frame  = picam2.capture_array("lores")
-                frame  = frame.astype(np.uint8)
-                rgb    = cv2.cvtColor(frame, cv2.COLOR_YUV420p2RGB)
-                frame2 = cv2.imencode(".jpg", rgb)[1].tobytes()
+                #frame  = picam2.capture_array("lores")
+                #frame  = frame.astype(np.uint8)
+                #rgb    = cv2.cvtColor(frame, cv2.COLOR_YUV420p2RGB)
+                #frame2 = cv2.imencode(".jpg", rgb)[1].tobytes()
+                buf = io.BytesIO()
+                picam2.capture_file(buf, 'lores', format='jpeg')
+                frame2 = buf.getvalue()
                 self.send_header('Content-Type', 'image/jpeg')
                 self.send_header('Content-Length', len(frame2))
                 self.end_headers()
@@ -102,10 +107,13 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
             self.send_header('Cache-Control', 'no-cache, private')
             self.send_header('Pragma', 'no-cache')
             try:
-                frame  = picam2.capture_array("main")
-                frame  = frame.astype(np.uint8)
-                rgb    = cv2.cvtColor(frame, cv2.COLOR_YUV420p2RGB)
-                frame2 = cv2.imencode(".jpg", rgb)[1].tobytes()
+                #frame  = picam2.capture_array("main")
+                #frame  = frame.astype(np.uint8)
+                #rgb    = cv2.cvtColor(frame, cv2.COLOR_YUV420p2RGB)
+                #frame2 = cv2.imencode(".jpg", rgb)[1].tobytes():
+                buf = io.BytesIO()
+                picam2.capture_file(buf, 'main', format='jpeg')
+                frame2 = buf.getvalue()
                 self.send_header('Content-Type', 'image/jpeg')
                 self.send_header('Content-Length', len(frame2))
                 self.end_headers()
@@ -119,6 +127,18 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
 class StreamingServer(socketserver.ThreadingMixIn, server.HTTPServer):
     allow_reuse_address = True
     daemon_threads = True
+    
+    # NEU: Diese Methode unterdrückt die Tracebacks bei Verbindungsabbrüchen
+    def handle_error(self, request, client_address):
+        import sys
+        # Wir prüfen, ob es ein normaler Verbindungsabbruch ist
+        cls, exc, tb = sys.exc_info()
+        if cls is ConnectionResetError or cls is BrokenPipeError:
+            # Einfach ignorieren, keine Log-Ausgabe
+            log.info ("ConnectionReset " + str(client_address))
+            return
+        # Andere Fehler (echte Probleme) weiterhin loggen
+        super().handle_error(request, client_address)
 
 def serve():
     address = ('', 7123)
@@ -173,8 +193,12 @@ def apply_timestamp(request):
 picam2.pre_callback = apply_timestamp
 
 # prepare ffmpeg command for streaming
-motion_atr_out = '-f rtsp rtsp://localhost:8554/cam_with_audio'
-encoder = H264Encoder (bitrate=1000000, iperiod=10, framerate=10)
+#motion_atr_out = '-f rtsp rtsp://localhost:8554/cam_with_audio'
+# Wir fügen rtpflags hinzu, um die Paketgröße zu begrenzen
+#motion_atr_out = '-f rtsp -rtsp_transport udp -pkt_size 1300 rtsp://localhost:8554/cam_with_audio'
+#encoder = H264Encoder (bitrate=1000000, iperiod=10, framerate=10)
+motion_atr_out = '-f rtsp -rtsp_transport udp -pkt_size 1300 -thread_queue_size 1024 rtsp://localhost:8554/cam_with_audio'
+encoder = H264Encoder (bitrate=700000, iperiod=10, framerate=10)
 #add alsa support:
 #sudo nano /usr/lib/python3/dist-packages/picamera2/outputs/ffmpegoutput.py
 #                           '-f', 'alsa,
