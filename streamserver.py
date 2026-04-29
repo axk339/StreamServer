@@ -9,7 +9,7 @@
 # v1.0 - 16.11.2024 - inital stable version
 # v1.1 - 03.08.2025 - adding audio and metadata log plus performance improvement
 # v1.2 - 07.10.2025 - adding lux control, improve overlay + logging, cleaning code from performance documentation
-
+# v1.3 - 29.04.2026 - resolution optimization for camv3, error handlibg
 import io
 import logging
 from systemd.journal import JournalHandler
