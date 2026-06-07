@@ -24,7 +24,7 @@ from picamera2.encoders import H264Encoder
 from picamera2.encoders import JpegEncoder
 from picamera2.outputs import FileOutput
 from picamera2.outputs import FfmpegOutput
-from libcamera import controls
+from libcamera import controls, Transform
 
 from threading import Thread, current_thread
 
@@ -49,7 +49,8 @@ logger = "/run/logger"
 stream = "/run/streamserver"
 delayTime = 60
 
-PAGE = """\
+camstat = "n/a"
+PAGE_TEMPLATE = """\
 <html>
 <head>
 <title>picamera2 MJPEG streaming demo</title>
@@ -58,11 +59,12 @@ PAGE = """\
 <h1>Picamera2 Stream-Server</h1>
 <p>Snapshot ({s_resx}x{s_resy})     <a href="snapshot.jpg">snapshot.jpg</a></p>
 <p>Stream-Still ({s_lowx}x{s_lowy}) <a href="stream.jpg">stream.jpg</a></p>\
+<p>Statistik:<br/>{s_camstat}</p> 
 <p>Preview:</p>\
 <img src="stream.jpg" width="{s_lowx}" height="{s_lowy}">\
 </body>\
 </html>
-""".format(s_resx=str(resx), s_resy=str(resy), s_lowx=str(lowx), s_lowy=str(lowy))
+"""
 
 class StreamingHandler(server.BaseHTTPRequestHandler):
     # Override log_message to do nothing
@@ -76,7 +78,13 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
             self.send_header('Location', '/index.html')
             self.end_headers()
         elif self.path == '/index.html':
-            content = PAGE.encode('utf-8')
+            content = PAGE_TEMPLATE.format(
+                s_camstat=camstat, 
+                s_resx=str(resx), 
+                s_resy=str(resy), 
+                s_lowx=str(lowx), 
+                s_lowy=str(lowy)
+            ).encode('utf-8')
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
             self.send_header('Content-Length', len(content))
@@ -158,15 +166,22 @@ config = picam2.create_video_configuration(
     main={"size": (resx, resy), "format": "YUV420"},
     lores={"size": (lowx, lowy), "format": "YUV420"},
     controls={
-        #"AnalogueGain": 2,
-        "Brightness": 0.2,
-        "Contrast": 1.2,
+        #"AnalogueGain": 4,
+        #"Brightness": 0.0,
+        #"Contrast": 0.0,
         #"ExposureValue": 1.0,
         "AeExposureMode": controls.AeExposureModeEnum.Long,
         "FrameRate": 10,
-        "AfMode": controls.AfModeEnum.Continuous
+        "AfMode": controls.AfModeEnum.Continuous,
+        "AfMetering": controls.AfMeteringEnum.Auto,
+        #"AfWindows": [focus_window],
+        #"AfMode": controls.AfModeEnum.Manual,
+        #"LensPosition": 0 #1.5 = Fokus 66cm > 0.5m - 5m scharf
+        "AeMeteringMode": controls.AeMeteringModeEnum.Spot,
+        "ExposureValue": 1.0  # Erhöht die Grundhelligkeit
     }
 )
+config["transform"] = Transform(hflip=True, vflip=True)
 picam2.configure(config)
 
 # Test overlay
@@ -198,7 +213,8 @@ picam2.pre_callback = apply_timestamp
 #motion_atr_out = '-f rtsp -rtsp_transport udp -pkt_size 1300 rtsp://localhost:8554/cam_with_audio'
 #encoder = H264Encoder (bitrate=1000000, iperiod=10, framerate=10)
 motion_atr_out = '-f rtsp -rtsp_transport udp -pkt_size 1300 -thread_queue_size 1024 rtsp://localhost:8554/cam_with_audio'
-encoder = H264Encoder (bitrate=700000, iperiod=10, framerate=10)
+#encoder = H264Encoder (bitrate=700000, iperiod=10, framerate=10)
+encoder = H264Encoder (bitrate=1000000, iperiod=10, framerate=10)
 #add alsa support:
 #sudo nano /usr/lib/python3/dist-packages/picamera2/outputs/ffmpegoutput.py
 #                           '-f', 'alsa,
@@ -208,7 +224,8 @@ output = FfmpegOutput(
     audio=True,                         # Enable audio
     audio_device="default:CARD=Device", # Specify your ALSA device (adjust if "default" isn't correct)
     audio_samplerate=16000,             # Audio sample rate
-    audio_codec="libopus",              # Audio codec
+    #audio_codec="libopus",             # Audio codec
+    audio_codec="pcm_alaw",             # Audio codec
     audio_bitrate=64000                 # Audio bitrate in bps
 )
 
@@ -276,6 +293,15 @@ try:
                 val += "doorpi_cam_lens;" + str(cur["LensPosition"]) + ";;\n"
                 with open(logger + "/doorpi_cam.log", "w") as f:
                     f.write(val)
+                camstat = str(datetime.datetime.now()) + "<br/>\n"
+                if "SensorTemperature" in cur: val += "Sensor Temp: " + str(cur["SensorTemperature"]) + "<br/>\n"
+                camstat += "Lux: " + str(cur["Lux"]) + "<br/>\n"
+                camstat += "Exposure: " + str(cur["ExposureTime"]/1000) + "<br/>\n"
+                camstat += "Analog Gain: " + str(cur["AnalogueGain"]) + "<br/>\n"
+                camstat += "Digital Gain: " + str(cur["DigitalGain"]) + "<br/>\n"
+                camstat += "Color: " + str(cur["ColourTemperature"]) + "<br/>\n"
+                camstat += "Focus: " + str(cur["FocusFoM"]) + "<br/>\n"
+                camstat += "Lens: " + str(cur["LensPosition"]) + "<br/>\n"
             else:
                 loggerConf()
             
@@ -287,18 +313,18 @@ try:
             #cv2.imwrite (stream+"/snapshot.jpg", rgb)
             
             #check / adjust exposure & gain
-            if cur["Lux"] > 500:
+            if cur["Lux"] > 1000:
                 picam2.set_controls({"AeExposureMode": controls.AeExposureModeEnum.Short})
                 if not lastMode:
                     lastMode = True
                     log.info("Changed AeExposureMode to short")
-                camstring = "AEmode=short, " + str(math.floor(cur["Lux"])) + " Lux"
+                camstring = "AEmode=short, " + str(math.floor(cur["Lux"])) + " Lux / AF " + str(cur["LensPosition"]) 
             else:
                 picam2.set_controls({"AeExposureMode": controls.AeExposureModeEnum.Long})
                 if lastMode:
                     lastMode = False
                     log.info("Changed AeExposureMode to long")
-                camstring = "AEmode=long, " + str(math.floor(cur["Lux"])) + " Lux"
+                camstring = "AEmode=long, " + str(math.floor(cur["Lux"])) + " Lux / AF " + str(cur["LensPosition"]) 
             
         except Exception as e:
             log.warning("ERROR while processing main loop: " + str(e))
